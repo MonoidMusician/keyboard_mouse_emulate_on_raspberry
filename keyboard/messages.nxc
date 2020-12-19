@@ -1,0 +1,26 @@
+task main()
+{
+  bool b = false;
+  SetSensor(S1, SENSOR_TOUCH);
+  ResetSensor(S1);
+  SetSensor(S4, SENSOR_TOUCH);
+  ResetSensor(S4);
+  while(true) {
+    for (int i=0; i<8; i++) {
+      string msg;
+      if (NO_ERR == ReceiveRemoteString(i, 1, msg)) {
+        TextOut(0, 8*(7-i), "                ");
+        TextOut(0, 8*(7-i), msg);
+      }
+    }
+    if (ButtonPressed(BTNCENTER, false)) {
+      if (b == false) {
+        SendMessage(8, "BTNCENTER");
+        b = true;
+      }
+    } else {
+      b = false;
+    }
+    Wait(100);
+  }
+}

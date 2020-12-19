@@ -70,12 +70,12 @@ class BTKbBluezProfile(dbus.service.Object):
 #
 class BTKbDevice():
 	#change these constants
-	MY_ADDRESS="B8:27:EB:B9:FE:EC"
-	MY_DEV_NAME="ThanhLe_Keyboard"
+	MY_ADDRESS="B8:27:EB:B4:10:64"
+	MY_DEV_NAME="ArduinoFootPedal"
 
 	#define some constants
-	P_CTRL =17  #Service port - must match port configured in SDP record
-	P_INTR =19  #Service port - must match port configured in SDP record#Interrrupt port
+	P_CTRL = 0x11  #Service port - must match port configured in SDP record
+	P_INTR = 0x13  #Service port - must match port configured in SDP record#Interrrupt port
 	PROFILE_DBUS_PATH="/bluez/yaptb/btkb_profile" #dbus path of  the bluez profile we will create
 	SDP_RECORD_PATH = sys.path[0] + "/sdp_record.xml" #file path of the sdp record to laod
 	UUID="00001124-0000-1000-8000-00805f9b34fb"
@@ -104,6 +104,7 @@ class BTKbDevice():
 		opts = {
 			"ServiceRecord":service_record,
 			"Role":"server",
+			#"AutoConnect": True,
 			"RequireAuthentication":False,
 			"RequireAuthorization":False
 		}
@@ -128,30 +129,46 @@ class BTKbDevice():
 	#ideally this would be handled by the Bluez 5 profile
 	#but that didn't seem to work
 	def listen(self):
-		print("Waiting for connections")
-		self.scontrol=BluetoothSocket(L2CAP)
-		self.sinterrupt=BluetoothSocket(L2CAP)
 
-		#bind these sockets to a port - port zero to select next available
-		self.scontrol.bind((self.MY_ADDRESS,self.P_CTRL))
-		self.sinterrupt.bind((self.MY_ADDRESS,self.P_INTR ))
+		try:
+			addr = ('EC:2C:E2:C6:C7:61')
+			print("Trying to connect to " + addr)
+			self.scontrol=BluetoothSocket(L2CAP)
+			self.sinterrupt=BluetoothSocket(L2CAP)
 
-		#Start listening on the server sockets
-		self.scontrol.listen(1) # Limit of 1 connection
-		self.sinterrupt.listen(1)
+			#bind these sockets to a port - port zero to select next available
+			self.scontrol.bind((self.MY_ADDRESS,self.P_CTRL))
+			self.sinterrupt.bind((self.MY_ADDRESS,self.P_INTR ))
 
-		self.ccontrol,cinfo = self.scontrol.accept()
-		print ("Got a connection on the control channel from " + cinfo[0])
+			self.scontrol.connect((addr, self.P_CTRL))
+			self.sinterrupt.connect((addr, self.P_INTR))
+			self.cinterrupt = self.sinterrupt
+			print("Connected!")
 
-		self.cinterrupt, cinfo = self.sinterrupt.accept()
-		print ("Got a connection on the interrupt channel from " + cinfo[0])
+		except:
+			print("Waiting for connections")
+			#Start listening on the server sockets
+			self.scontrol=BluetoothSocket(L2CAP)
+			self.sinterrupt=BluetoothSocket(L2CAP)
 
+			#bind these sockets to a port - port zero to select next available
+			self.scontrol.bind((self.MY_ADDRESS,self.P_CTRL))
+			self.sinterrupt.bind((self.MY_ADDRESS,self.P_INTR ))
+
+			self.scontrol.listen(1) # Limit of 1 connection
+			self.sinterrupt.listen(1)
+
+			self.ccontrol,cinfo = self.scontrol.accept()
+			print ("Got a connection on the control channel from ",cinfo)
+
+			self.cinterrupt, cinfo = self.sinterrupt.accept()
+			print ("Got a connection on the interrupt channel from ",cinfo)
 
 	#send a string to the bluetooth host machine
 	def send_string(self,message):
 
-	 #    print("Sending "+message)
-		 self.cinterrupt.send(message)
+		# print("Sending "+message)
+		self.cinterrupt.send(message)
 
 
 

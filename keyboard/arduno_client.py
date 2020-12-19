@@ -13,6 +13,7 @@ import dbus
 import dbus.service
 import dbus.mainloop.glib
 import time
+import serial
 import evdev # used to get input from the keyboard
 from evdev import *
 import keymap # used to map evdev input to hid keodes
@@ -59,7 +60,8 @@ class Keyboard():
             try:
                 #try and get a keyboard - should always be event0 as
                 #we're only plugging one thing in
-                self.dev = InputDevice("/dev/input/event0")
+                #self.dev = serial.Serial('/dev/ttyACM0', 9600)
+                self.dev = serial.Serial('/dev/rfcomm0', 9600)
                 have_dev=True
             except OSError:
                 print "Keyboard not found, waiting 3 seconds and retrying"
@@ -67,34 +69,14 @@ class Keyboard():
             print "found a keyboard"
 
     def change_state(self,event):
-        evdev_code=ecodes.KEY[event.code]
-        modkey_element = keymap.modkey(evdev_code)
-
-        if modkey_element > 0:
-            if self.state[2][modkey_element] == 0:
-                self.state[2][modkey_element] = 1
-            else:
-                self.state[2][modkey_element] = 0
-        else:
-            #Get the keycode of the key
-            hex_key = keymap.convert(ecodes.KEY[event.code])
-            #Loop through elements 4 to 9 of the inport report structure
-            for i in range(4,10):
-                if self.state[i]== hex_key and event.value == 0:
-                    #Code 0 so we need to depress it
-                    self.state[i] = 0x00
-                elif self.state[i] == 0x00 and event.value == 1:
-                    #if the current space if empty and the key is being pressed
-                    self.state[i]=hex_key
-                    break
+        self.state[4] = ord(event[2])
 
     #poll for keyboard events
     def event_loop(self):
-        for event in self.dev.read_loop():
-            #only bother if we hit a key and its an up or down event
-            if event.type==ecodes.EV_KEY and event.value < 2:
-                self.change_state(event)
-                self.send_input()
+        while True:
+            event = self.dev.read(8)
+            self.change_state(event)
+            self.send_input()
 
     #forward keyboard events to the dbus service
     def send_input(self):

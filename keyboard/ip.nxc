@@ -1,0 +1,14 @@
+#ifndef TEXT
+#define TEXT "MISSING IP"
+#endif
+
+#ifndef DATE
+#define DATE "Missing Date"
+#endif
+
+task main()
+{
+   TextOut(0, 48, TEXT);
+   TextOut(0, 40, DATE);
+   while(true){}
+}
