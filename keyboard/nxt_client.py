@@ -12,6 +12,8 @@ import sys # used to exit the script
 import dbus
 import dbus.service
 import dbus.mainloop.glib
+from dbus.mainloop.glib import DBusGMainLoop
+from gi.repository import GLib
 import time
 import nxt
 import nxt.bluesock
@@ -52,8 +54,15 @@ class Keyboard():
         print("setting up DBus Client")
 
         self.bus = dbus.SystemBus()
-        self.btkservice = self.bus.get_object('org.yaptb.btkbservice','/org/yaptb/btkbservice')
-        self.iface = dbus.Interface(self.btkservice,'org.yaptb.btkbservice')
+        self.bus.watch_name_owner('org.yaptb.btkbservice', self.handle_btkservice)
+        self.btkservice = None
+        self.iface = None
+
+        self.dev = None
+
+        self.message_offset = 0
+        self.messages = ["","","","","","","",""]
+        self.messages = self.messages[0:3]
 
         print("waiting for keyboard")
 
@@ -73,46 +82,107 @@ class Keyboard():
                 print("Keyboard not found, waiting 5 seconds and retrying")
                 time.sleep(5)
 
+    def handle_btkservice(self, name):
+        if name:
+            self.btkservice = self.bus.get_object('org.yaptb.btkbservice','/org/yaptb/btkbservice')
+            self.iface = dbus.Interface(self.btkservice,'org.yaptb.btkbservice')
+            self.connected = self.iface.is_connected()
+            self.on_connect()
+            self.iface.connect_to_signal('connection_changed', self.on_connect)
+        else:
+            self.btkservice = self.iface = None
+            self.connected = None
+            self.on_connect()
+
     def change_state(self,event):
         self.state[4] = ord(event[2])
 
+    def on_connect(self, stat=None):
+        if stat is not None:
+            self.connected = stat
+
+        m = self.messages[2]
+
+        if self.btkservice is None:
+            self.messages[2] = "No server"
+        elif self.connected:
+            self.messages[2] = "Connected"
+        else:
+            self.messages[2] = "Disconnected"
+
+        if m != self.messages[2]:
+            print(self.messages[2])
+            self.send_messages()
+
+    def send_messages(self):
+        if self.dev is None: return
+        for (i,m) in enumerate(self.messages):
+            self.dev.message_write(i, m[min(self.message_offset, (len(m)//8 - 1)*8):])
+
     #poll for keyboard events
-    def event_loop(self):
-        c = 0
-        while True:
+    def check_mailbox(self):
+        if self.dev is None: return
+        try:
+            try:
+                msg = self.dev.message_read(8, 0, True)
+                if msg[1] == b"BTNCENTER\0":
+                    ip = subprocess.check_output("hostname -I", shell=True)
+                    ssid = subprocess.check_output("iwgetid | sed -E 's/.*ESSID:\"(.*)\"/\\1/g'", shell=True)
+                    self.messages[0] = ip
+                    self.messages[1] = ssid
+                    self.message_offset = 0
+                    self.send_messages()
+                elif msg[1] == b"BTNRIGHT\0":
+                    self.message_offset = min(
+                        self.message_offset+8,
+                        max((len(m)//8 - 1)*8 for m in self.messages)
+                    )
+                    self.send_messages()
+                elif msg[1] == b"BTNLEFT\0":
+                    self.message_offset = max(
+                        self.message_offset-8,
+                        0
+                    )
+                    self.send_messages()
+                else:
+                    print("Unknown message")
+                    print(msg)
+            except KeyboardInterrupt as e:
+                raise e
+            except Exception as e:
+                ignore = [
+                    "No active program",
+                    "Specified mailbox queue is empty",
+                ]
+                if str(e) not in ignore:
+                    print(e)
+        finally:
+            GLib.timeout_add(1000, self.check_mailbox)
+    def check_buttons(self):
+        if self.dev is None: return
+        try:
             l = self.dev.b0.is_pressed()
             r = self.dev.b1.is_pressed()
             if l != self.l or r != self.r:
                 self.l = l
                 self.r = r
-                print((l, r))
+                if self.iface is not None:
+                    #print((l, r))
+                    pass
                 self.state[4] = 0
                 if l and not r:
                     self.state[4] = ord("P")
                 if r and not l:
                     self.state[4] = ord("O")
                 self.send_input()
-            c += 1
-            if c % 20 == 0:
-                try:
-                    msg = self.dev.message_read(8, 0, True)
-                    if msg[1] == b"BTNCENTER\0":
-                        ip = subprocess.check_output("hostname -I", shell=True)
-                        self.dev.message_write(0, ip)
-                        ssid = subprocess.check_output("iwgetid | sed -E 's/.*ESSID:\"(.*)\"/\\1/g'", shell=True)
-                        self.dev.message_write(1, ssid)
-                except KeyboardInterrupt as e:
-                    raise e
-                except Exception as e:
-                    ignore = [
-                        "No active program",
-                        "Specified mailbox queue is empty",
-                    ]
-                    if str(e) not in ignore:
-                        print(e)
+        finally:
+            GLib.idle_add(self.check_buttons)
 
     #forward keyboard events to the dbus service
     def send_input(self):
+        if self.iface is None:
+            return
+
         bin_str=""
         element=self.state[2]
         for bit in element:
@@ -169,21 +239,14 @@ def main():
     while True:
         print("Setting up keyboard")
 
+        DBusGMainLoop(set_as_default=True)
         kb = Keyboard()
 
         #_thread.start_new_thread(thread_fn, (kb.dev,))
-        print("starting event loop")
-
-        try:
-            kb.event_loop()
-        except KeyboardInterrupt as e:
-            raise e
-        except Exception as e:
-            print(e)
-            pass # loop
-        finally:
-            kb.dev.sock.close()
-            kb = None
+        print("main loop")
+        GLib.idle_add(kb.check_buttons)
+        GLib.idle_add(kb.check_mailbox)
+        GLib.MainLoop().run()
 
 if __name__ == "__main__":
     main()

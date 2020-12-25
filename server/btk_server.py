@@ -22,7 +22,7 @@ import bluetooth
 from bluetooth import *
 
 
-import gtk
+import gobject
 from dbus.mainloop.glib import DBusGMainLoop
 
 
@@ -68,7 +68,7 @@ class BTKbBluezProfile(dbus.service.Object):
 #create a bluetooth device to emulate a HID keyboard,
 # advertize a SDP record using our bluez profile class
 #
-class BTKbDevice():
+class BTKbDevice(object):
 	#change these constants
 	MY_ADDRESS="B8:27:EB:B4:10:64"
 	MY_DEV_NAME="ArduinoFootPedal"
@@ -80,10 +80,15 @@ class BTKbDevice():
 	SDP_RECORD_PATH = sys.path[0] + "/sdp_record.xml" #file path of the sdp record to laod
 	UUID="00001124-0000-1000-8000-00805f9b34fb"
 
-	def __init__(self):
+	def __init__(self, last_addr=None):
 		print("Setting up BT device")
-		self.init_bt_device()
+		self.last_addr = last_addr
+		self.connected = False
+		#self.init_bt_device()
 		self.init_bluez_profile()
+
+	def is_connected(self):
+		return self.connected
 
 	#configure the bluetooth hardware device
 	def init_bt_device(self):
@@ -129,10 +134,10 @@ class BTKbDevice():
 	#ideally this would be handled by the Bluez 5 profile
 	#but that didn't seem to work
 	def listen(self):
-
+		self.connected = False
 		try:
-			addr = ('EC:2C:E2:C6:C7:61')
-			print("Trying to connect to " + addr)
+			assert(self.last_addr is not None)
+			print("Trying to connect to " + self.last_addr)
 			self.scontrol=BluetoothSocket(L2CAP)
 			self.sinterrupt=BluetoothSocket(L2CAP)
 
@@ -140,10 +145,14 @@ class BTKbDevice():
 			self.scontrol.bind((self.MY_ADDRESS,self.P_CTRL))
 			self.sinterrupt.bind((self.MY_ADDRESS,self.P_INTR ))
 
-			self.scontrol.connect((addr, self.P_CTRL))
-			self.sinterrupt.connect((addr, self.P_INTR))
+			self.scontrol.connect((self.last_addr, self.P_CTRL))
+			self.sinterrupt.connect((self.last_addr, self.P_INTR))
 			self.cinterrupt = self.sinterrupt
+			self.connected = True
 			print("Connected!")
+
+		except KeyboardInterrupt as e:
+			raise e
 
 		except:
 			print("Waiting for connections")
@@ -160,16 +169,34 @@ class BTKbDevice():
 
 			self.ccontrol,cinfo = self.scontrol.accept()
 			print ("Got a connection on the control channel from ",cinfo)
+			self.last_addr = cinfo[0]
 
 			self.cinterrupt, cinfo = self.sinterrupt.accept()
 			print ("Got a connection on the interrupt channel from ",cinfo)
+			self.connected = True
 
 	#send a string to the bluetooth host machine
 	def send_string(self,message):
-
 		# print("Sending "+message)
-		self.cinterrupt.send(message)
-
+		try:
+			self.cinterrupt.send(message)
+		except BluetoothError as e:
+			if str(e) in [
+				"(104, 'Connection reset by peer')",
+				"(110, 'Connection timed out')",
+				"(107, 'Transport endpoint is not connected')",
+			]:
+				print(e)
+				print("Trying to reconnect")
+				self.connected = False
+				self.listen()
+				if self.connected:
+					self.send_string(message)
+				else:
+					raise e
+			else:
+				print("Ugh:")
+				print(e)
 
 
 #define a dbus service that emulates a bluetooth keyboard
@@ -177,7 +204,7 @@ class BTKbDevice():
 #the service
 class  BTKbService(dbus.service.Object):
 
-	def __init__(self):
+	def __init__(self, last_addr):
 
 		print("Setting up service")
 
@@ -186,7 +213,12 @@ class  BTKbService(dbus.service.Object):
 		dbus.service.Object.__init__(self,bus_name,"/org/yaptb/btkbservice")
 
 		#create and setup our device
-		self.device= BTKbDevice()
+		self.device= BTKbDevice(last_addr)
+		def setter(this, name, arg):
+			object.__setattr__(this, name, arg)
+			if name == "connected":
+				self.connection_changed(arg)
+		BTKbDevice.__setattr__ = setter
 
 		#start listening for connections
 		self.device.listen()
@@ -208,12 +240,20 @@ class  BTKbService(dbus.service.Object):
 
 		self.device.send_string(cmd_str)
 
+	@dbus.service.method('org.yaptb.btkbservice', out_signature='b')
+	def is_connected(self):
+		return self.device.is_connected()
+
+	@dbus.service.signal('org.yaptb.btkbservice', signature='b')
+	def connection_changed(self, connected):
+		pass
+
 #main routine
 if __name__ == "__main__":
 	# we an only run as root
 	if not os.geteuid() == 0:
-	   sys.exit("Only root can run this script")
+		sys.exit("Only root can run this script")
 
 	DBusGMainLoop(set_as_default=True)
-	myservice = BTKbService()
-	gtk.main()
+	myservice = BTKbService('EC:2C:E2:C6:C7:61')
+	gobject.MainLoop().run()

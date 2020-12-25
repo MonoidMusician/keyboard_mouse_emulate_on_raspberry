@@ -18,6 +18,16 @@ task main()
         SendMessage(8, "BTNCENTER");
         b = true;
       }
+    } else if (ButtonPressed(BTNLEFT, false)) {
+      if (b == false) {
+        SendMessage(8, "BTNLEFT");
+        b = true;
+      }
+    } else if (ButtonPressed(BTNRIGHT, false)) {
+      if (b == false) {
+        SendMessage(8, "BTNRIGHT");
+        b = true;
+      }
     } else {
       b = false;
     }

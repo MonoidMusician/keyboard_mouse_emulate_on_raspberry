@@ -25,5 +25,5 @@ if [ $? != 0 ] ; then
     tmux send-keys -t BT-HID:os.1 'cd $C_PATH/server && sudo python btk_server.py ' C-m
     tmux send-keys -t BT-HID:os.2 'cd $C_PATH && sudo /usr/bin/bluetoothctl' C-m
     sleep 5 && tmux send-keys -t BT-HID:os.3 'cd $C_PATH/keyboard/ && sudo env PYTHONPATH=/home/pi/.local/lib/python3.7/site-packages/:$PYTHONPATH python3 nxt_client.py' C-m
-    tmux set-option -t BT-HID mouse on
+    #tmux set-option -t BT-HID mouse on
 fi
