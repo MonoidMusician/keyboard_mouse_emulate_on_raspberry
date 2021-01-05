@@ -5,7 +5,7 @@ sudo hciconfig hcio up
 # Update  mac address
 ./updateMac.sh
 #Update Name
-./updateName.sh ArduinoFootPedal
+./updateName.sh $(hostname)
 #if [ ! -f /dev/rfcomm0 ] ; then
 #  echo "Hi"
 #  sudo rfcomm bind 0 98:D3:37:00:8F:68 1

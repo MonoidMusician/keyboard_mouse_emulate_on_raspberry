@@ -116,8 +116,16 @@ class Keyboard():
 
     def send_messages(self):
         if self.dev is None: return
-        for (i,m) in enumerate(self.messages):
-            self.dev.message_write(i, m[min(self.message_offset, (len(m)//8 - 1)*8):])
+        try:
+            for (i,m) in enumerate(self.messages):
+                self.dev.message_write(i, m[min(self.message_offset, (len(m)//8 - 1)*8):])
+        except Exception as e:
+            ignore = [
+                "No active program",
+                "Specified mailbox queue is empty",
+            ]
+            if str(e) not in ignore:
+                print(e)
 
     #poll for keyboard events
     def check_mailbox(self):
@@ -126,8 +134,8 @@ class Keyboard():
             try:
                 msg = self.dev.message_read(8, 0, True)
                 if msg[1] == b"BTNCENTER\0":
-                    ip = subprocess.check_output("hostname -I", shell=True)
-                    ssid = subprocess.check_output("iwgetid | sed -E 's/.*ESSID:\"(.*)\"/\\1/g'", shell=True)
+                    ip = str(subprocess.check_output("hostname -I", shell=True), "utf-8")
+                    ssid = str(subprocess.check_output("iwgetid | sed -E 's/.*ESSID:\"(.*)\"/\\1/g'", shell=True), "utf-8")
                     self.messages[0] = ip
                     self.messages[1] = ssid
                     self.message_offset = 0

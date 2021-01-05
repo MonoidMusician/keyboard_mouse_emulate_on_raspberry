@@ -70,8 +70,8 @@ class BTKbBluezProfile(dbus.service.Object):
 #
 class BTKbDevice(object):
 	#change these constants
-	MY_ADDRESS="B8:27:EB:B4:10:64"
-	MY_DEV_NAME="ArduinoFootPedal"
+	MY_ADDRESS="B8:27:EB:3B:6D:5B"
+	MY_DEV_NAME="pipedal0"
 
 	#define some constants
 	P_CTRL = 0x11  #Service port - must match port configured in SDP record
@@ -84,7 +84,7 @@ class BTKbDevice(object):
 		print("Setting up BT device")
 		self.last_addr = last_addr
 		self.connected = False
-		#self.init_bt_device()
+		self.init_bt_device()
 		self.init_bluez_profile()
 
 	def is_connected(self):
